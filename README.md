@@ -479,3 +479,5 @@ Licensed under GNU GPL v3.0 — always free and open-source.
 - [pywal](https://github.com/dylanaraps/pywal) by [dylanaraps](https://github.com/dylanaraps)
 
 - [pywal16](https://github.com/eylles/pywal16) by [eylles](https://github.com/eylles)
+
+- [cwal](https://github.com/nitinbhat972/cwal) by [nitinbhat972](https://github.com/nitinbhat972)
