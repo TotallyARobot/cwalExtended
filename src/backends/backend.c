@@ -27,7 +27,6 @@ extern ImageBackend truecolor32;
 extern ImageBackend truecolor16;
 extern ImageBackend truecolor8;
 extern ImageBackend RGB;
-extern ImageBackend PLab;
 #ifdef USE_LIBIMAGEQUANT
 extern ImageBackend libimagequant;
 #endif
@@ -49,7 +48,6 @@ static void init_builtin_backends() {
   available_backends[num_backends++] = &truecolor16;
   available_backends[num_backends++] = &truecolor8;
   available_backends[num_backends++] = &RGB;
-  available_backends[num_backends++] = &PLab;
 #ifdef USE_LIBIMAGEQUANT
   available_backends[num_backends++] = &libimagequant;
 #endif
