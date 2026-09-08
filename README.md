@@ -106,38 +106,6 @@ sudo dnf install ImageMagick-devel libimagequant-devel luajit-devel
 ```bash
 brew install imagemagick libimagequant luajit
 ```
-
-## Package Manager
-
-**Arch Linux (AUR)**
-
-```bash
-yay -S cwal-git
-# or
-paru -S cwal-git
-```
-
-**Homebrew**
-
-```bash
-brew tap nitinbhat972/cwal
-brew install cwal
-```
-
-## Nix
-
-### Install (user profile)
-```bash
-nix profile install nixpkgs#cwal
-```
-
-### NixOS (system-wide)
-```nix
-environment.systemPackages = with pkgs; [
-  cwal
-];
-```
-
 ### Building from Source
 
 We use [`nob`](https://github.com/tsoding/nob.h) to build this project — a small, stb-style single-header build system developed by tsoding. The build scripts live in `nob.c` and `src/nob.c`, and everything is configured through `config.h`.
