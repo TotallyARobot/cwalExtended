@@ -13,13 +13,16 @@
 #include "color_operation.h"
 #include "utils/utils.h"
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define MIN_BRIGHTNESS_THRESHOLD 0.88f
 #define TARGET_LIGHTEN_AMOUNT 0.93f
 #define DARKEN_AMOUNT 0.70f
-#define LIGHTEN_AMOUNT 0.03f
-#define SATURATE_AMOUNT 0.40f
-#define COLOR_THRESHOLD 16
+#define LIGHTEN_AMOUNT 0.02f
+#define SATURATE_AMOUNT 0.20f
+#define COLOR_MIN_THRESHOLD 16
+#define COLOR_MAX_THRESHOLD 32
 #define MIN_VALUE 0.25f
 #define MIN_SATURATION 0.20f
 #define MIN_CONTRAST_RATIO_LIGHT 4.5f
@@ -62,8 +65,8 @@ static void boost_light_colors(Palette *palette) {
 
     // If the color is too light (high luminance), darken it for better contrast
     // against light background
-    if (lum > 0.6f) {
-      palette->colors[i] = darken_color(palette->colors[i], 0.3f);
+    if (lum > 0.5f) {
+      palette->colors[i] = darken_color(palette->colors[i], 0.4f);
     }
 
     // Apply similar saturation boost if desaturated
@@ -132,19 +135,26 @@ static void ensure_contrast(Palette *palette, float contrast, bool light,
 
 static void generate_16_colors(Palette *palette) {
   if (palette->mode == LIGHT) {
-    palette->colors[7] = darken_color(palette->colors[0], 0.60);
+    palette->colors[7] = darken_color(palette->colors[7], 0.60);
     palette->colors[7] = saturate_color(palette->colors[7], 0.05);
     palette->colors[8] = darken_color(palette->colors[0], 0.30);
     palette->colors[8] = saturate_color(palette->colors[8], 0.10);
     palette->colors[15] = darken_color(palette->colors[0], 0.90);
   } else {
-    palette->colors[7] = lighten_color(palette->colors[0], 0.60);
+    palette->colors[7] = lighten_color(palette->colors[7], 0.60);
     palette->colors[7] = saturate_color(palette->colors[7], 0.05);
     palette->colors[8] = lighten_color(palette->colors[0], 0.40);
     palette->colors[8] = saturate_color(palette->colors[8], 0.10);
     palette->colors[15] = lighten_color(palette->colors[0], 0.80);
   }
 
+  //Ensure contrast between all text colors.
+  int backgroundBrightness = palette->colors[0].red + palette->colors[0].green + palette->colors[0].blue;
+  for (int i = 1; i<7; i++) {
+	  if (abs(palette->colors[i].red+palette->colors[i].green+palette->colors[i].blue-backgroundBrightness) < 64)
+		  palette->colors[i] = lighten_color(palette->colors[i], abs(palette->colors[i].red+palette->colors[i].green+palette->colors[i].blue-backgroundBrightness)/255.0);
+  }
+  
   // Generate bright accent colors (9-14) from base accent colors (1-6)
   if (palette->mode == DARK) {
     for (int i = 1; i < 7; i++) {
@@ -167,47 +177,51 @@ static void generate_16_colors(Palette *palette) {
 }
 
 void process_colors(Palette *palette) {
-  // First, check if we are in dark mode and boost colors if they are too
-  // dark/desaturated
-  if (palette->mode == DARK) {
-    boost_dark_colors(palette);
-  } else if (palette->mode == LIGHT) {
-    reverse_colors(palette);
-    boost_light_colors(palette);
-  }
-
-  // Initial background adjustment based on light/dark mode
-  if (palette->mode == LIGHT) {
-    float current_lum = w3_luminance(palette->colors[0]);
-    if (current_lum <
-        MIN_BRIGHTNESS_THRESHOLD) { // If background is not bright enough
-      palette->colors[0] = lighten_color(
-          palette->colors[0],
-          TARGET_LIGHTEN_AMOUNT - current_lum); // Lighten to target luminance
-    } else if (current_lum > MAX_BRIGHTNESS_THRESHOLD) {
-      palette->colors[0] =
-          darken_color(palette->colors[0], current_lum - TARGET_LIGHTEN_AMOUNT);
-    }
-  } else {
-    bool saturate_more = (palette->colors[0].red < COLOR_THRESHOLD ||
-                          palette->colors[0].green < COLOR_THRESHOLD ||
-                          palette->colors[0].blue < COLOR_THRESHOLD);
-
-    if (palette->colors[0].red >= COLOR_THRESHOLD) {
-      palette->colors[0] = darken_color(palette->colors[0], DARKEN_AMOUNT);
-    }
-
-    if (saturate_more) {
-      palette->colors[0] = lighten_color(palette->colors[0], LIGHTEN_AMOUNT);
-      palette->colors[0] = saturate_color(palette->colors[0], SATURATE_AMOUNT);
-    }
-  }
-
-  // Generate the 16 colors
-  generate_16_colors(palette);
-
-  // Apply overall saturation and contrast adjustments
-  saturate_all_colors(palette, palette->saturation);
-  ensure_contrast(palette, palette->contrast, palette->mode == LIGHT,
-                  palette->colors[0]);
+	// First, check if we are in dark mode and boost colors if they are too dark/desaturated
+	if (palette->mode == DARK) {
+		boost_dark_colors(palette);
+	} else if (palette->mode == LIGHT) {
+		//reverse_colors(palette);
+		palette->colors[8] = palette->colors[0];
+		palette->colors[0] = palette->colors[7];
+		palette->colors[7] = palette->colors[8];
+		boost_light_colors(palette);
+	}
+	
+	//Initial background adjustment based on light/dark mode
+	if (palette->mode == LIGHT) {
+		float current_lum = w3_luminance(palette->colors[0]);
+		if (current_lum <
+			MIN_BRIGHTNESS_THRESHOLD) { // If background is not bright enough
+			palette->colors[0] = lighten_color( palette->colors[0],TARGET_LIGHTEN_AMOUNT - current_lum); // Lighten to target luminance
+		} else if (current_lum > MAX_BRIGHTNESS_THRESHOLD) {
+			palette->colors[0] = darken_color(palette->colors[0], current_lum - TARGET_LIGHTEN_AMOUNT);
+		}
+	} else {
+		
+		// If the color of the background is too dark or too light saturate and lighten it 
+		bool lighten_more = (palette->colors[0].red < COLOR_MIN_THRESHOLD ||
+							 palette->colors[0].green < COLOR_MIN_THRESHOLD ||
+							 palette->colors[0].blue < COLOR_MIN_THRESHOLD);
+		bool lighten_less = (palette->colors[0].red > COLOR_MAX_THRESHOLD ||
+							 palette->colors[0].green > COLOR_MAX_THRESHOLD ||
+							 palette->colors[0].blue > COLOR_MAX_THRESHOLD);
+		
+		if (lighten_more) {
+			palette->colors[0] = lighten_color(palette->colors[0], LIGHTEN_AMOUNT);
+			palette->colors[0] = saturate_color(palette->colors[0], SATURATE_AMOUNT);
+		}
+		else if (lighten_less) {
+			palette->colors[0] = saturate_color(palette->colors[0], -SATURATE_AMOUNT);
+			palette->colors[0] = darken_color(palette->colors[0], .5);
+		}
+	}
+	
+	// Generate the 16 colors
+	generate_16_colors(palette);
+	
+	// Apply overall saturation and contrast adjustments
+	saturate_all_colors(palette, palette->saturation);
+	ensure_contrast(palette, palette->contrast, palette->mode == LIGHT,
+					palette->colors[0]);
 }

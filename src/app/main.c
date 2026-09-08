@@ -23,247 +23,247 @@
 #include <string.h>
 
 int main(int argv, char **argc) {
-  // Load config file
-  Config *app_config = load_config();
-  if (!app_config) {
-    logging(ERROR, "Failed to load configuration.");
-    return 1;
-  }
-
-  // Parse command-line arguments
-  CliArgs args = {0};
-  CliStatus cli_status = parse_cli_args(argv, argc, app_config, &args);
-  if (cli_status == CLI_ERROR) {
-    free_cli_args(&args);
-    free_config(app_config);
-    return 1;
-  }
-
-  if (cli_status == CLI_EXIT) {
-    free_cli_args(&args);
-    free_config(app_config);
-    return 0;
-  }
-
-  set_quiet_mode(args.quiet);
-
-  if (args.list_backends) {
-    init_backends();
-    list_all_backends();
-    free_config(app_config);
-    free_cli_args(&args);
-    return 0;
-  }
-
-  if (args.list_themes) {
-    list_themes();
-    free_config(app_config);
-    free_cli_args(&args);
-    return 0;
-  }
-
-  if (args.preview) {
-    logging(INFO, "Current colorscheme:\n");
-    preview_palette();
-    free_config(app_config);
-    free_cli_args(&args);
-    return 0;
-  }
-
-  // Initialize backends
-  init_backends();
-
-  // Palette structure initiallation
-  Palette palette = {0};
-  palette.mode = args.opts.mode;
-  palette.cols16_mode = args.opts.cols16_mode;
-  palette.saturation = args.opts.saturation;
-  palette.contrast = args.opts.contrast;
-  palette.alpha = args.opts.alpha;
-
-  if (args.use_random_theme) {
-    if (load_random_theme(&palette, args.random_mode) != 0) {
-      free_config(app_config);
-      free_cli_args(&args);
-      return -1;
-    }
-    palette.cols16_mode = NONE;
-  } else if (args.theme) {
-    if (load_theme(&palette, args.theme) != 0) {
-      free_config(app_config);
-      free_cli_args(&args);
-      return -1;
-    }
-    palette.cols16_mode = NONE;
-  } else {
-    if (palette.cols16_mode == NONE) {
-      palette.cols16_mode = DARKEN;
-    }
-
-    char *image_to_process_path = NULL;
-    if (args.use_random_dir) {
-      image_to_process_path = get_random_image_path(args.opts.random_dir);
-      if (!image_to_process_path) {
-        free_config(app_config);
-        free_cli_args(&args);
-        return -1;
-      }
-      logging(INFO, "Selected random image: %s", image_to_process_path);
-    } else if (args.image_path) {
-      image_to_process_path = expand_home(args.image_path);
-      if (!image_to_process_path) {
-        logging(ERROR, "Failed to resolve image path.");
-        free_config(app_config);
-        free_cli_args(&args);
-        return -1;
-      }
-    } else if (args.restore) {
-      image_to_process_path = get_last_wallpaper(args.opts.out_dir);
-      if (!image_to_process_path) {
-        logging(ERROR,
-                "No previous run found: %s/cwal does not exist. Run "
-                "`cwal --img <image>` or `cwal --random <dir>` first.",
-                args.opts.out_dir);
-        free_config(app_config);
-        free_cli_args(&args);
-        return -1;
-      }
-      logging(INFO, "Re-applying last wallpaper: %s", image_to_process_path);
-    }
-
-    const char *path = image_to_process_path;
-    if (!path) {
-      logging(ERROR, "Failed to resolve image path.");
-      free_config(app_config);
-      free_cli_args(&args);
-      return -1;
-    }
-
-    // Selects backend
-    char *original_requested_backend = strdup(args.opts.backend);
-    if (!original_requested_backend) {
-      logging(ERROR, "Failed to allocate memory for backend tracking.");
-      free(image_to_process_path);
-      free_config(app_config);
-      free_cli_args(&args);
-      return -1;
-    }
-
-    ImageBackend *backend = backend_get(args.opts.backend);
-    if (!backend) {
-      logging(WARN, "Backend '%s' not found.", args.opts.backend);
-      free(args.opts.backend);
-      args.opts.backend = strdup("cwal");
-      if (!args.opts.backend) {
-        logging(ERROR, "Failed to allocate backend fallback.");
-        free(original_requested_backend);
-        free(image_to_process_path);
-        free_config(app_config);
-        free_cli_args(&args);
-        return -1;
-      }
-
-      backend = backend_get(args.opts.backend);
-      if (!backend) {
-        logging(ERROR, "Default backend not found!");
-        free(original_requested_backend);
-        free(image_to_process_path);
-        free_config(app_config);
-        free_cli_args(&args);
-        return -1;
-      }
-    }
-
-    palette.wallpaper = image_to_process_path;
-    image_to_process_path = NULL;
-    ImageBackend *used_backend = backend;
-
-    // Loads colors from cache
-    if (load_palette_from_cache(&palette, args.opts.out_dir,
-                                args.opts.backend) != 0) {
-      // No cache for requested backend, try fallbacks
-      ImageBackend *cached_backend = NULL;
-      for (ImageBackend **candidate = get_all_backends(); *candidate;
-           candidate++) {
-        if (*candidate == backend)
-          continue;
-        if (load_palette_from_cache(&palette, args.opts.out_dir,
-                                    (*candidate)->name) == 0) {
-          cached_backend = *candidate;
-          break;
-        }
-      }
-
-      if (cached_backend) {
-        used_backend = cached_backend;
-        if (strcmp(args.opts.backend, cached_backend->name) != 0) {
-          logging(WARN, "Backend '%s' failed, using cached palette from '%s'.",
-                  args.opts.backend, cached_backend->name);
-        }
-      } else {
-        logging(INFO, "Using backend: %s", args.opts.backend);
-
-        if (process_with_fallback(backend, path, &palette, &used_backend) !=
-            0) {
-          logging(ERROR, "All backends failed to process the image!");
-          free(original_requested_backend);
-          free(palette.wallpaper);
-          palette.wallpaper = NULL;
-          free_config(app_config);
-          free_cli_args(&args);
-          return -1;
-        }
-
-        const char *actual_backend_name =
-            used_backend ? used_backend->name : args.opts.backend;
-        if (used_backend &&
-            strcmp(args.opts.backend, used_backend->name) != 0) {
-          logging(WARN, "Backend '%s' failed, using '%s'.", args.opts.backend,
-                  used_backend->name);
-        }
-
-        process_colors(&palette);
-        if (save_palette_to_cache(&palette, args.opts.out_dir,
-                                  actual_backend_name) != 0) {
-          logging(WARN, "Failed to cache palette.");
-        }
-      }
-    }
-
-    free(original_requested_backend);
-  }
-
-  // Generates template files
-  process_template(args.opts.out_dir, &palette, args.opts.skip_cursor);
-
-  // Reloads the app colors
-  apply_colors_to_apps(args.opts.out_dir, app_config, args.no_reload);
-
-  // Runs post hooks
-  if (args.opts.script_path) {
-    char *resolved_script_path = expand_home(args.opts.script_path);
-    if (resolved_script_path) {
-      char *final_cmd =
-          replace_placeholder(resolved_script_path, "$current_wallpaper",
-                              palette.wallpaper ? palette.wallpaper : "");
-      if (final_cmd) {
-        logging(INFO, "Running post-hook script: %s", final_cmd);
-        execute_command(final_cmd);
-        free(final_cmd);
-      }
-      free(resolved_script_path);
-    } else {
-      logging(ERROR, "Failed to resolve post-hook script path.");
-    }
-  }
-
-  free(palette.wallpaper);
-  palette.wallpaper = NULL;
-
-  // Prints the generated color palatte
-  preview_palette();
-
-  free_config(app_config);
-  free_cli_args(&args);
-  return 0;
+	// Load config file
+	Config *app_config = load_config();
+	if (!app_config) {
+		logging(ERROR, "Failed to load configuration.");
+		return 1;
+	}
+	
+	// Parse command-line arguments
+	CliArgs args = {0};
+	CliStatus cli_status = parse_cli_args(argv, argc, app_config, &args);
+	if (cli_status == CLI_ERROR) {
+		free_cli_args(&args);
+		free_config(app_config);
+		return 1;
+	}
+	
+	if (cli_status == CLI_EXIT) {
+		free_cli_args(&args);
+		free_config(app_config);
+		return 0;
+	}
+	
+	set_quiet_mode(args.quiet);
+	
+	if (args.list_backends) {
+		init_backends();
+		list_all_backends();
+		free_config(app_config);
+		free_cli_args(&args);
+		return 0;
+	}
+	
+	if (args.list_themes) {
+		list_themes();
+		free_config(app_config);
+		free_cli_args(&args);
+		return 0;
+	}
+	
+	if (args.preview) {
+		logging(INFO, "Current colorscheme:\n");
+		preview_palette();
+		free_config(app_config);
+		free_cli_args(&args);
+		return 0;
+	}
+	
+	// Initialize backends
+	init_backends();
+	
+	// Palette structure initiallation
+	Palette palette = {0};
+	palette.mode = args.opts.mode;
+	palette.cols16_mode = args.opts.cols16_mode;
+	palette.saturation = args.opts.saturation;
+	palette.contrast = args.opts.contrast;
+	palette.alpha = args.opts.alpha;
+	
+	if (args.use_random_theme) {
+		if (load_random_theme(&palette, args.random_mode) != 0) {
+			free_config(app_config);
+			free_cli_args(&args);
+			return -1;
+		}
+		palette.cols16_mode = NONE;
+	} else if (args.theme) {
+		if (load_theme(&palette, args.theme) != 0) {
+			free_config(app_config);
+			free_cli_args(&args);
+			return -1;
+		}
+		palette.cols16_mode = NONE;
+	} else {
+		if (palette.cols16_mode == NONE) {
+			palette.cols16_mode = DARKEN;
+		}
+		
+		char *image_to_process_path = NULL;
+		if (args.use_random_dir) {
+			image_to_process_path = get_random_image_path(args.opts.random_dir);
+			if (!image_to_process_path) {
+				free_config(app_config);
+				free_cli_args(&args);
+				return -1;
+			}
+			logging(INFO, "Selected random image: %s", image_to_process_path);
+		} else if (args.image_path) {
+			image_to_process_path = expand_home(args.image_path);
+			if (!image_to_process_path) {
+				logging(ERROR, "Failed to resolve image path.");
+				free_config(app_config);
+				free_cli_args(&args);
+				return -1;
+			}
+		} else if (args.restore) {
+			image_to_process_path = get_last_wallpaper(args.opts.out_dir);
+			if (!image_to_process_path) {
+				logging(ERROR,
+						"No previous run found: %s/cwal does not exist. Run "
+						"`cwal --img <image>` or `cwal --random <dir>` first.",
+						args.opts.out_dir);
+				free_config(app_config);
+				free_cli_args(&args);
+				return -1;
+			}
+			logging(INFO, "Re-applying last wallpaper: %s", image_to_process_path);
+		}
+		
+		const char *path = image_to_process_path;
+		if (!path) {
+			logging(ERROR, "Failed to resolve image path.");
+			free_config(app_config);
+			free_cli_args(&args);
+			return -1;
+		}
+		
+		// Selects backend
+		char *original_requested_backend = strdup(args.opts.backend);
+		if (!original_requested_backend) {
+			logging(ERROR, "Failed to allocate memory for backend tracking.");
+			free(image_to_process_path);
+			free_config(app_config);
+			free_cli_args(&args);
+			return -1;
+		}
+		
+		ImageBackend *backend = backend_get(args.opts.backend);
+		if (!backend) {
+			logging(WARN, "Backend '%s' not found.", args.opts.backend);
+			free(args.opts.backend);
+			args.opts.backend = strdup("cwal");
+			if (!args.opts.backend) {
+				logging(ERROR, "Failed to allocate backend fallback.");
+				free(original_requested_backend);
+				free(image_to_process_path);
+				free_config(app_config);
+				free_cli_args(&args);
+				return -1;
+			}
+			
+			backend = backend_get(args.opts.backend);
+			if (!backend) {
+				logging(ERROR, "Default backend not found!");
+				free(original_requested_backend);
+				free(image_to_process_path);
+				free_config(app_config);
+				free_cli_args(&args);
+				return -1;
+			}
+		}
+		
+		palette.wallpaper = image_to_process_path;
+		image_to_process_path = NULL;
+		ImageBackend *used_backend = backend;
+		
+		// Loads colors from cache
+		if (load_palette_from_cache(&palette, args.opts.out_dir,
+									args.opts.backend) != 0) {
+			// No cache for requested backend, try fallbacks
+			ImageBackend *cached_backend = NULL;
+			/* for (ImageBackend **candidate = get_all_backends(); *candidate; */
+			/* 	 candidate++) { */
+			/* 	if (*candidate == backend) */
+			/* 		continue; */
+			/* 	if (load_palette_from_cache(&palette, args.opts.out_dir, */
+			/* 								(*candidate)->name) == 0) { */
+			/* 		cached_backend = *candidate; */
+			/* 		break; */
+			/* 	} */
+			/* } */
+			
+			if (cached_backend) {
+				used_backend = cached_backend;
+				if (strcmp(args.opts.backend, cached_backend->name) != 0) {
+					logging(WARN, "Backend '%s' failed, using cached palette from '%s'.",
+							args.opts.backend, cached_backend->name);
+				}
+			} else {
+				logging(INFO, "Using backend: %s", args.opts.backend);
+				
+				if (process_with_fallback(backend, path, &palette, &used_backend) !=
+					0) {
+					logging(ERROR, "All backends failed to process the image!");
+					free(original_requested_backend);
+					free(palette.wallpaper);
+					palette.wallpaper = NULL;
+					free_config(app_config);
+					free_cli_args(&args);
+					return -1;
+				}
+				
+				const char *actual_backend_name =
+					used_backend ? used_backend->name : args.opts.backend;
+				if (used_backend &&
+					strcmp(args.opts.backend, used_backend->name) != 0) {
+					logging(WARN, "Backend '%s' failed, using '%s'.", args.opts.backend,
+							used_backend->name);
+				}
+				
+				process_colors(&palette);
+				if (save_palette_to_cache(&palette, args.opts.out_dir,
+										  actual_backend_name) != 0) {
+					logging(WARN, "Failed to cache palette.");
+				}
+			}
+		}
+		
+		free(original_requested_backend);
+	}
+	
+	// Generates template files
+	process_template(args.opts.out_dir, &palette, args.opts.skip_cursor);
+	
+	// Reloads the app colors
+	apply_colors_to_apps(args.opts.out_dir, app_config, args.no_reload);
+	
+	// Runs post hooks
+	if (args.opts.script_path) {
+		char *resolved_script_path = expand_home(args.opts.script_path);
+		if (resolved_script_path) {
+			char *final_cmd =
+				replace_placeholder(resolved_script_path, "$current_wallpaper",
+									palette.wallpaper ? palette.wallpaper : "");
+			if (final_cmd) {
+				logging(INFO, "Running post-hook script: %s", final_cmd);
+				execute_command(final_cmd);
+				free(final_cmd);
+			}
+			free(resolved_script_path);
+		} else {
+			logging(ERROR, "Failed to resolve post-hook script path.");
+		}
+	}
+	
+	free(palette.wallpaper);
+	palette.wallpaper = NULL;
+	
+	// Prints the generated color palatte
+	preview_palette();
+	
+	free_config(app_config);
+	free_cli_args(&args);
+	return 0;
 }

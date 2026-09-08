@@ -8,6 +8,7 @@
  *  Any contributions or forks must retain this original header.
  */
 
+//Quantize the image in RGB colorspace rather than LAB colorspace, this tends to produce nicer palettes. 
 #include "backend.h"
 #include "magickwand.h"
 
@@ -30,7 +31,7 @@ static int generate_palette_cwal(RawImage *image, Palette *palette) {
 
   MagickWand *wand = NewMagickWand();
   if (!wand) {
-    return -1;
+	  return -1;
   }
 
   if (MagickConstituteImage(wand, image->width, image->height, "RGBA",
@@ -39,17 +40,21 @@ static int generate_palette_cwal(RawImage *image, Palette *palette) {
     return -1;
   }
 
-  if (MagickSetImageColorspace(wand, LabColorspace) == MagickFalse) {
-    DestroyMagickWand(wand);
-    return -1;
+  if (MagickSetImageColorspace(wand, sRGBColorspace) == MagickFalse) {
+	  DestroyMagickWand(wand);
+	  return -1;
   }
 
-  if (MagickQuantizeImage(wand, 9, LabColorspace, 0, NoDitherMethod,
-                          MagickFalse) == MagickFalse) {
-    DestroyMagickWand(wand);
-    return -1;
+  if (MagickTransformImageColorspace(wand, RGBColorspace) == MagickFalse) {
+	  DestroyMagickWand(wand);
+	  return -1;
   }
-
+  
+  if (MagickQuantizeImage(wand, 9, RGBColorspace, 0, NoDitherMethod, MagickFalse) == MagickFalse) {
+	  DestroyMagickWand(wand);
+	  return -1;
+  }
+  
   PixelWand *pixel = NewPixelWand();
   if (!pixel) {
     DestroyMagickWand(wand);
@@ -76,7 +81,7 @@ static int generate_palette_cwal(RawImage *image, Palette *palette) {
   return status;
 }
 
-ImageBackend cwal = {.name = "cwal",
+ImageBackend RGB = {.name = "RGB",
                      .init_backend = init_magickwand,
                      .terminate_backend = terminate_magickwand,
                      .generate_palette = generate_palette_cwal};

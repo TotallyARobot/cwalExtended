@@ -19,7 +19,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern ImageBackend cwal;
+extern ImageBackend truecolor512;
+extern ImageBackend truecolor256;
+extern ImageBackend truecolor128;
+extern ImageBackend truecolor64;
+extern ImageBackend truecolor32;
+extern ImageBackend truecolor16;
+extern ImageBackend truecolor8;
+extern ImageBackend RGB;
+extern ImageBackend PLab;
 #ifdef USE_LIBIMAGEQUANT
 extern ImageBackend libimagequant;
 #endif
@@ -33,7 +41,15 @@ static int num_lua_scripts = 0;
 #endif
 
 static void init_builtin_backends() {
-  available_backends[num_backends++] = &cwal;
+  available_backends[num_backends++] = &truecolor512;
+  available_backends[num_backends++] = &truecolor256;
+  available_backends[num_backends++] = &truecolor128;
+  available_backends[num_backends++] = &truecolor64;
+  available_backends[num_backends++] = &truecolor32;
+  available_backends[num_backends++] = &truecolor16;
+  available_backends[num_backends++] = &truecolor8;
+  available_backends[num_backends++] = &RGB;
+  available_backends[num_backends++] = &PLab;
 #ifdef USE_LIBIMAGEQUANT
   available_backends[num_backends++] = &libimagequant;
 #endif

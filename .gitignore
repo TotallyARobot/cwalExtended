@@ -4,3 +4,4 @@ asserts/
 result/
 nob
 *.old
+*.~
