@@ -152,7 +152,8 @@ cd cwal
 2. **Build:**
 
 ```bash
-./nob
+make nob
+./nob build
 ```
 
 `nob` incrementally compiles `src/` in parallel (controlled by `PROCS` in `config.h`, `0` = auto). Use `./nob clean` to wipe build artifacts.
