@@ -19,7 +19,7 @@
 #define MIN_BRIGHTNESS_THRESHOLD 0.88f
 #define TARGET_LIGHTEN_AMOUNT 0.93f
 #define DARKEN_AMOUNT 0.70f
-#define LIGHTEN_AMOUNT 0.02f
+#define LIGHTEN_AMOUNT 0.07f
 #define SATURATE_AMOUNT 0.20f
 #define COLOR_MIN_THRESHOLD 16
 #define COLOR_MAX_THRESHOLD 32
@@ -209,7 +209,7 @@ void process_colors(Palette *palette) {
 		
 		if (lighten_more) {
 			palette->colors[0] = lighten_color(palette->colors[0], LIGHTEN_AMOUNT);
-			palette->colors[0] = saturate_color(palette->colors[0], SATURATE_AMOUNT);
+			palette->colors[0] = saturate_color(palette->colors[0], -SATURATE_AMOUNT-LIGHTEN_AMOUNT);
 		}
 		else if (lighten_less) {
 			palette->colors[0] = saturate_color(palette->colors[0], -SATURATE_AMOUNT);

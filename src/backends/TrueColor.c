@@ -64,6 +64,48 @@ int findLargest (MagickWand* wand, PixelWand* pixel, int hue, int saturation, in
 	return index;
 }
 
+// Get the average saturation of the image, to use as the target saturation.
+double findTargetSat (MagickWand* wand, PixelWand* pixel){
+	double sum = 0;
+    int count = 0;
+	double *pixelHue = malloc(sizeof(double));
+	double *pixelSaturation = malloc(sizeof(double));
+	double *pixelLightness = malloc(sizeof(double));
+	
+	for(int i = 0; MagickGetImageColormapColor(wand, i, pixel) != MagickFalse; i++){
+		PixelGetHSL(pixel, pixelHue, pixelSaturation, pixelLightness);
+		sum += *pixelSaturation;
+		count = i;
+	}
+	
+	free(pixelHue);
+	free(pixelLightness);
+	free(pixelSaturation);
+
+	return sum/count;
+}
+
+// Get the average saturation of the image, to use as the target saturation.
+double findTargetLight (MagickWand* wand, PixelWand* pixel){
+	double sum = 0;
+    int count = 0;
+	double *pixelHue = malloc(sizeof(double));
+	double *pixelSaturation = malloc(sizeof(double));
+	double *pixelLightness = malloc(sizeof(double));
+	
+	for(int i = 0; MagickGetImageColormapColor(wand, i, pixel) != MagickFalse; i++){
+		PixelGetHSL(pixel, pixelHue, pixelSaturation, pixelLightness);
+		sum += *pixelLightness;
+		count = i;
+	}
+	
+	free(pixelHue);
+	free(pixelLightness);
+	free(pixelSaturation);
+
+	return sum/count;
+}
+
 static void init_magickwand() {
   if (!IsMagickWandInstantiated()) {
     MagickWandGenesis();
@@ -109,12 +151,14 @@ static int generate_palette_with_colors(RawImage *image, Palette *palette, int n
   // image.
   // Note: I reduced the saturation of the colors since I find it produces more visually pleasing
   // colors.
-  int LargestRedIndex = findLargest(wand, pixel, 0, 25, 50);
-  int LargestGreenIndex = findLargest(wand, pixel, 120, 25, 50);
-  int LargestYellowIndex = findLargest(wand, pixel, 60, 25, 50);
-  int LargestBlueIndex = findLargest(wand, pixel, 240, 25, 50);
-  int LargestMagentaIndex = findLargest(wand, pixel, 300, 25, 50);
-  int LargestCyanIndex = findLargest(wand, pixel, 180, 25, 50); 
+  int targetSat = (int)(findTargetSat(wand, pixel)*100);
+  int targetLight = (int)(findTargetLight(wand, pixel)*100);
+  int LargestRedIndex = findLargest(wand, pixel, 0, targetSat, targetLight);
+  int LargestGreenIndex = findLargest(wand, pixel, 120, targetSat, targetLight);
+  int LargestYellowIndex = findLargest(wand, pixel, 60, targetSat, targetLight);
+  int LargestBlueIndex = findLargest(wand, pixel, 240, targetSat, targetLight);
+  int LargestMagentaIndex = findLargest(wand, pixel, 300, targetSat, targetLight);
+  int LargestCyanIndex = findLargest(wand, pixel, 180, targetSat, targetLight); 
   
   //Generate Black and White by just finding the highest and lowest lightness values in the
   //quantized image palette.
